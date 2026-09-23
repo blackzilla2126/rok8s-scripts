@@ -3,19 +3,58 @@ parameters:
   kind_version:
     description: "The kind version to use. See https://github.com/kubernetes-sigs/kind/releases"
     type: string
-    default: "0.11.1"
+    default: "0.33.0"
   kind_node_image:
-    description: "The kind node image to use.  See https://github.com/kubernetes-sigs/kind/releases"
+    description: "The kind node image to use. Pin by digest from the same kind release. See https://github.com/kubernetes-sigs/kind/releases"
     type: string
-    default: "kindest/node:v1.20.7@sha256:cbeaf907fc78ac97ce7b625e4bf0de16e3ea725daf6b04f930bd14c67c671ff9"
+    default: "kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5"
   kind_config:
-    description: "A Kind config file to use for the cluster"
+    description: "A Kind config file to use for the cluster. Default includes kubeadm v1beta3 (Kubernetes <1.36) and v1beta4 (Kubernetes 1.36+) patches."
     type: string
     default: |
       kind: Cluster
       apiVersion: kind.x-k8s.io/v1alpha4
-      featureGates:
-        "RemoveSelfLink": false
+      kubeadmConfigPatches:
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta3
+        kind: ClusterConfiguration
+        metadata:
+          name: config
+        apiServer:
+          certSANs:
+          - e2e-control-plane
+          - 127.0.0.1
+          - localhost
+        etcd:
+          local:
+            serverCertSANs:
+            - e2e-control-plane
+            - 127.0.0.1
+            - localhost
+            peerCertSANs:
+            - e2e-control-plane
+            - 127.0.0.1
+            - localhost
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta4
+        kind: ClusterConfiguration
+        metadata:
+          name: config
+        apiServer:
+          certSANs:
+          - e2e-control-plane
+          - 127.0.0.1
+          - localhost
+        etcd:
+          local:
+            serverCertSANs:
+            - e2e-control-plane
+            - 127.0.0.1
+            - localhost
+            peerCertSANs:
+            - e2e-control-plane
+            - 127.0.0.1
+            - localhost
 steps:
   - run:
       name: Start Kind Cluster

@@ -46,13 +46,7 @@ There are many valid ways to configure CI pipelines, but to help you get started
 
 The goal of the Fairwinds Community is to exchange ideas, influence the open source roadmap,
 and network with fellow Kubernetes users.
-[Chat with us on Slack](https://join.slack.com/t/fairwindscommunity/shared_invite/zt-e3c6vj4l-3lIH6dvKqzWII5fSSFDi1g)
-or
-[join the user group](https://www.fairwinds.com/open-source-software-user-group) to get involved!
-
-<a href="https://www.fairwinds.com/t-shirt-offer?utm_source=rok8s-scripts&utm_medium=rok8s-scripts&utm_campaign=rok8s-scripts-tshirt">
-  <img src="https://www.fairwinds.com/hubfs/Doc_Banners/Fairwinds_OSS_User_Group_740x125_v6.png" alt="Love Fairwinds Open Source? Share your business email and job title and we'll send you a free Fairwinds t-shirt!" />
-</a>
+[Chat with us on Slack](https://join.slack.com/t/fairwindscommunity/shared_invite/zt-2na8gtwb4-DGQ4qgmQbczQyB2NlFlYQQ)
 
 ## Other Projects from Fairwinds
 

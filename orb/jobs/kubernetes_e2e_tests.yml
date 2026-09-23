@@ -9,30 +9,88 @@ description: >
   can be done using `docker cp <file> e2e-command-runner:<path>.
   The regular script is copied over to the command runner container
   and executed on the command runner, providing access to the
-  Kubernetes kind cluster via kubectl and helm commands.
+  Kubernetes kind cluster via kubectl and helm commands. The
+  post_script runs on the CircleCI executor itself after the script
+  is run on the command runner.
 parameters:
   kind_version:
     description: "The kind version to use. See https://github.com/kubernetes-sigs/kind/releases"
     type: string
-    default: "0.11.1"
+    default: "0.33.0"
   kind_node_image:
-    description: "The kind node image to use.  See https://github.com/kubernetes-sigs/kind/releases"
+    description: "The kind node image to use. Pin by digest from the same kind release. See https://github.com/kubernetes-sigs/kind/releases"
     type: string
-    default: "kindest/node:v1.21.1@sha256:69860bda5563ac81e3c0057d654b5253219618a22ec3a346306239bba8cfa1a6"
+    default: "kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5"
+  kind_config:
+    description: "A Kind config file to use for the cluster. Default includes kubeadm v1beta3 (Kubernetes <1.36) and v1beta4 (Kubernetes 1.36+) patches."
+    type: string
+    default: |
+      kind: Cluster
+      apiVersion: kind.x-k8s.io/v1alpha4
+      kubeadmConfigPatches:
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta3
+        kind: ClusterConfiguration
+        metadata:
+          name: config
+        apiServer:
+          certSANs:
+          - e2e-control-plane
+          - 127.0.0.1
+          - localhost
+        etcd:
+          local:
+            serverCertSANs:
+            - e2e-control-plane
+            - 127.0.0.1
+            - localhost
+            peerCertSANs:
+            - e2e-control-plane
+            - 127.0.0.1
+            - localhost
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta4
+        kind: ClusterConfiguration
+        metadata:
+          name: config
+        apiServer:
+          certSANs:
+          - e2e-control-plane
+          - 127.0.0.1
+          - localhost
+        etcd:
+          local:
+            serverCertSANs:
+            - e2e-control-plane
+            - 127.0.0.1
+            - localhost
+            peerCertSANs:
+            - e2e-control-plane
+            - 127.0.0.1
+            - localhost
   command_runner_image:
     description: "The image to execute commands from against the kind cluster. Also where the script gets executed."
     type: string
-    default: "quay.io/reactiveops/ci-images:v11-alpine"
+    default: "quay.io/reactiveops/ci-images:v16.0-cimg-24.04"
   pre_script:
-    description: "Script to run on the local machine before running on command runner."
+    description: "Script to run on the local machine before running script on command runner."
     type: string
+    default: ""
   pre_script_steps:
-    description: "Define and inject a set of custom steps to run in the local machine before scripts are executed against the command runner."
+    description: "Define and inject a set of custom steps to run in the local machine before scripts are executed on the command runner."
     type: steps
     default: []
   script:
     description: "The script to run on the command runner."
     type: string
+  post_script:
+    description: "Script to run on the local machine after running script on command runner."
+    type: string
+    default: ""
+  post_script_steps:
+    description: "Define and inject a set of custom steps to run in the local machine after scripts are executed on the command runner."
+    type: steps
+    default: []
   executor:
     description: "The name of custom executor to use. Only recommended for development."
     type: executor
@@ -63,6 +121,22 @@ parameters:
       Where to mount the workspace if attach-workspace is true.
     type: string
     default: "/tmp/workspace"
+  checkout-path:
+    description: |
+      Where to checkout the repository.
+    type: string
+    default: "."
+  checkout-method:
+    description: |
+      Valid options include blobless and full.
+    type: string
+    default: "blobless"
+  no_output_timeout:
+    description: >
+      How long CircleCI waits with no output from the Run Script step before
+      killing it. CircleCI duration, e.g. 20m.
+    type: string
+    default: "10m"
 executor: <<parameters.executor>>
 steps:
   - when:
@@ -70,19 +144,26 @@ steps:
       steps:
         - attach_workspace:
             at: <<parameters.workspace-location>>
-  - checkout
+  - checkout:
+      path: << parameters.checkout-path >>
+      method: << parameters.checkout-method >>
   - setup_remote_docker:
       docker_layer_caching: << parameters.enable_docker_layer_caching >>
   - set_env
   - e2e_start_kind_cluster:
       kind_node_image: << parameters.kind_node_image >>
       kind_version: << parameters.kind_version >>
+      kind_config: << parameters.kind_config >>
+
   - e2e_start_command_runner:
       command_runner_image: << parameters.command_runner_image >>
   - steps: << parameters.pre_script_steps >>
   - e2e_run_script:
       pre_script: << parameters.pre_script >>
       script: << parameters.script >>
+      post_script: << parameters.post_script >>
+      no_output_timeout: << parameters.no_output_timeout >>
+  - steps: << parameters.post_script_steps >>
   - when:
       condition: << parameters.store-test-results >>
       steps:

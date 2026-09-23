@@ -1,17 +1,29 @@
 description: Run a script in the executor.
 parameters:
   pre_script:
-    description: "Script to run on local executor before running on remote machine."
+    description: "Script to run on the local machine before running script on command runner."
     type: string
     default: ""
   script:
     description: "Script to run on the command runner."
     type: string
     default: ""
+  post_script:
+    description: "Script to run on the local machine after running script on command runner."
+    type: string
+    default: ""
+  no_output_timeout:
+    description: >
+      How long CircleCI waits with no output from the Run Script step before
+      killing it. CircleCI duration, e.g. 20m.
+    type: string
+    default: "10m"
 steps:
   - run:
       name: Run Script
+      no_output_timeout: << parameters.no_output_timeout >>
       command: |
-        bash << parameters.pre_script >>
+        [ -z << parameters.pre_script >> ] || bash << parameters.pre_script >>
         docker cp << parameters.script >> e2e-command-runner:/script
         docker exec e2e-command-runner sh -c "chmod +x /script; /script"
+        [ -z << parameters.post_script >> ] || bash << parameters.post_script >>

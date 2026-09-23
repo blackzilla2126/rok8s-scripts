@@ -32,10 +32,10 @@ else
   PKG_INSTALL="${PKG_MANAGER} install -y"
 fi
 
-KUBECTL_VERSION="${KUBECTL_VERSION:-v1.19.13}"
-HELM_VERSION="${HELM_VERSION:-v3.6.3}"
-HELM2_VERSION="${HELM2_VERSION:-v2.17.0}"
-SOPS_VERSION="${SOPS_VERSION:-v3.7.1}"
+AWS_CLI_VERSION="${AWS_CLI_VERSION:-2.28.1}"
+KUBECTL_VERSION="${KUBECTL_VERSION:-v1.34.2}"
+HELM_VERSION="${HELM_VERSION:-v3.19.2}"
+SOPS_VERSION="${SOPS_VERSION:-v3.11.0}"
 
 # make sure sudo is installed
 if ! hash sudo 2>/dev/null; then
@@ -84,31 +84,43 @@ fi
 # make sure gcloud is installed
 if ! hash gcloud 2>/dev/null; then
   echo Installing gcloud...
-  gcloud components update --quiet || \
+  if [[ $PKG_MANAGER = *"apt"* ]]; then
+    # Debian/Ubuntu images may ship Python < 3.10; the curl SDK installer requires 3.10+.
+    sudo apt-get install -y -qq apt-transport-https ca-certificates gnupg curl
+    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+      sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | \
+      sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+    sudo apt-get update
+    sudo apt-get install -y -qq google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin
+  else
     curl https://dl.google.com/dl/cloudsdk/channels/rapid/install_google_cloud_sdk.bash | \
       bash -s -- --disable-prompts
-  ln -s "${HOME}/google-cloud-sdk/bin/gcloud" "${ROK8S_INSTALL_PATH}/gcloud"
-  ln -s "${HOME}/google-cloud-sdk/bin/docker-credential-gcloud" "${ROK8S_INSTALL_PATH}/docker-credential-gcloud"
-  ln -s "${HOME}/google-cloud-sdk/bin/gsutil" "${ROK8S_INSTALL_PATH}/gsutil"
+    ln -s "${HOME}/google-cloud-sdk/bin/gcloud" "${ROK8S_INSTALL_PATH}/gcloud"
+    ln -s "${HOME}/google-cloud-sdk/bin/docker-credential-gcloud" "${ROK8S_INSTALL_PATH}/docker-credential-gcloud"
+    ln -s "${HOME}/google-cloud-sdk/bin/gsutil" "${ROK8S_INSTALL_PATH}/gsutil"
+    gcloud components install gke-gcloud-auth-plugin --quiet
+  fi
 fi
 
-# make sure awscli is installed
-if ! hash aws 2>/dev/null; then
-  echo Installing aws...
-  pip install awscli
-fi
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-$AWS_CLI_VERSION.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install --update
+hash aws
 
 # make sure kubectl is installed
 if ! hash kubectl 2>/dev/null; then
   echo Installing kubectl...
-  wget -q "https://storage.googleapis.com/kubernetes-release/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -O "${ROK8S_INSTALL_PATH}/kubectl"
+  wget -q "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -O "${ROK8S_INSTALL_PATH}/kubectl"
   chmod +x "${ROK8S_INSTALL_PATH}/kubectl"
 fi
 
 # make sure sops is installed
 if ! hash sops 2>/dev/null; then
   echo Installing sops...
-  curl -fsSLo "${ROK8S_INSTALL_PATH}/sops" "https://github.com/mozilla/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.$(uname | tr '[:upper:]' '[:lower:]')"
+  sops_url="https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64"
+  echo "Sops download URL: $sops_url"
+  curl -fsSLo "${ROK8S_INSTALL_PATH}/sops" "$sops_url"
   chmod +x "${ROK8S_INSTALL_PATH}/sops"
 fi
 
@@ -122,49 +134,34 @@ if ! hash helm 2>/dev/null; then
   rm -rf "${ROK8S_INSTALL_PATH}/helm-tmp"
 fi
 
-# make sure helm2 is installed
-if ! hash helm2 2>/dev/null; then
-  echo Installing helm2...
-  mkdir "${ROK8S_INSTALL_PATH}/helm2-tmp"
-  curl "https://get.helm.sh/helm-${HELM2_VERSION}-linux-amd64.tar.gz" | tar xzvf - -C "${ROK8S_INSTALL_PATH}/helm2-tmp"
-  mv "${ROK8S_INSTALL_PATH}/helm2-tmp/linux-amd64/helm" "${ROK8S_INSTALL_PATH}/helm2"
-  chmod +x "${ROK8S_INSTALL_PATH}/helm2"
-  rm -rf "${ROK8S_INSTALL_PATH}/helm2-tmp"
-fi
-
 # make sure kubeval is installed
 if ! hash kubeval 2>/dev/null; then
   echo Installing kubeval...
   cd "${ROK8S_INSTALL_PATH}"
-  curl -L "https://github.com/garethr/kubeval/releases/download/0.7.3/kubeval-linux-amd64.tar.gz" | tar xzvf -
-  echo "0582bd259fb8045562d3db3bc01ab834d8f210e7  kubeval"  | sha1sum -c -
+  curl -LO "https://github.com/garethr/kubeval/releases/download/v0.16.1/kubeval-linux-amd64.tar.gz"
+  echo "2d6f9bda1423b93787fa05d9e8dfce2fc1190fefbcd9d0936b9635f3f78ba790  kubeval-linux-amd64.tar.gz"  | sha256sum -c -
+  tar -zxvf kubeval-linux-amd64.tar.gz
+  rm kubeval-linux-amd64.tar.gz
   chmod +x "${ROK8S_INSTALL_PATH}/kubeval"
-fi
-
-# make sure aws-iam-authenticator is installed
-if ! hash aws-iam-authenticator 2>/dev/null; then
-  echo Installing aws-iam-authenticator...
-  cd "${ROK8S_INSTALL_PATH}"
-  wget -q "https://github.com/kubernetes-sigs/aws-iam-authenticator/releases/download/v0.3.0/heptio-authenticator-aws_0.3.0_linux_amd64" -O "${ROK8S_INSTALL_PATH}/aws-iam-authenticator"
-  echo "1053ac315df5f1e306f62969dbf1e1308f608efd  aws-iam-authenticator" | sha1sum -c -
-  chmod +x "${ROK8S_INSTALL_PATH}/aws-iam-authenticator"
 fi
 
 # make sure vault is installed
 if ! hash vault 2>/dev/null; then
   echo Installing vault...
   cd "${ROK8S_INSTALL_PATH}"
-  curl -LO "https://releases.hashicorp.com/vault/1.7.1/vault_1.7.1_linux_amd64.zip"
-  unzip vault_1.7.1_linux_amd64.zip
-  rm vault_1.7.1_linux_amd64.zip
+  curl -LO "https://releases.hashicorp.com/vault/2.1.0/vault_2.1.0_linux_amd64.zip"
+  echo "08e8a13d29d20c5e28ef5e2c187bf3a2e84712a43615de1b3d24701ad9aab972  vault_2.1.0_linux_amd64.zip" | sha256sum -c -
+  unzip vault_2.1.0_linux_amd64.zip
+  rm vault_2.1.0_linux_amd64.zip
   chmod +x vault
 fi
 
+# install yq
 if ! hash yq 2>/dev/null; then
   echo Installing yq...
   cd "${ROK8S_INSTALL_PATH}"
-  curl -L "https://github.com/mikefarah/yq/releases/download/v4.8.0/yq_linux_amd64.tar.gz" | tar zxvf -
-  echo "1bdbf68deeaf36267ec9ee9d39dded381f12d9d5e86ba352fdbb54cd78a4b068  yq_linux_amd64" | sha256sum -c -
+  curl -L "https://github.com/mikefarah/yq/releases/download/v4.34.2/yq_linux_amd64.tar.gz" | tar zxvf -
+  echo "1952f93323e871700325a70610d2b33bafae5fe68e6eb4aec0621214f39a4c1e  yq_linux_amd64" | sha256sum -c -
   mv yq_linux_amd64 yq
   chmod +x yq
 fi
